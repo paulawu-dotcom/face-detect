@@ -1,55 +1,48 @@
 from flask import Flask, request, jsonify
-import face_recognition
+import cv2
 import numpy as np
-import requests
 import base64
 from PIL import Image
 import io
 
 app = Flask(__name__)
 
+# 載入 OpenCV 內建的人臉偵測模型
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
 @app.route('/detect_face', methods=['POST'])
 def detect_face():
     try:
         data = request.get_json()
         img_base64 = data.get('image')
-        
-        # 解碼 base64 圖片
         img_bytes = base64.b64decode(img_base64)
         img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
         img_array = np.array(img)
-        
-        # 偵測人臉
-        face_locations = face_recognition.face_locations(img_array, model='hog')
-        
-        if not face_locations:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
+
+        if len(faces) == 0:
             return jsonify({'found': False, 'message': '找不到人臉'})
-        
-        # 取第一個人臉（top, right, bottom, left）
-        top, right, bottom, left = face_locations[0]
-        
-        h, w = img_array.shape[:2]
-        
-        # 擴大範圍：頭頂多留 40%，兩側各留 20%，下方到肩膀多留 60%
-        pad_top    = int((bottom - top) * 0.4)
-        pad_side   = int((right - left) * 0.2)
-        pad_bottom = int((bottom - top) * 0.6)
-        
-        x1 = max(0, left   - pad_side)
-        y1 = max(0, top    - pad_top)
-        x2 = min(w, right  + pad_side)
-        y2 = min(h, bottom + pad_bottom)
-        
+
+        x, y, w, h = faces[0]
+        H, W = img_array.shape[:2]
+
+        pad_top    = int(h * 0.5)
+        pad_side   = int(w * 0.3)
+        pad_bottom = int(h * 0.8)
+
+        x1 = max(0, x - pad_side)
+        y1 = max(0, y - pad_top)
+        x2 = min(W, x + w + pad_side)
+        y2 = min(H, y + h + pad_bottom)
+
         return jsonify({
             'found': True,
-            'x': x1,
-            'y': y1,
-            'w': x2 - x1,
-            'h': y2 - y1,
-            'img_width':  w,
-            'img_height': h
+            'x': int(x1), 'y': int(y1),
+            'w': int(x2 - x1), 'h': int(y2 - y1),
+            'img_width': W, 'img_height': H
         })
-        
     except Exception as e:
         return jsonify({'found': False, 'error': str(e)})
 
