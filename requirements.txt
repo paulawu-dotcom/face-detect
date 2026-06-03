@@ -1,0 +1,6 @@
+flask
+face_recognition
+Pillow
+numpy
+requests
+gunicorn
